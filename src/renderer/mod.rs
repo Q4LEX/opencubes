@@ -7,15 +7,17 @@ use std::{
 };
 
 use ash::{
+    extensions::khr::Surface,
     vk::{
         self, ApplicationInfo, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerCreateInfoEXTBuilder, DebugUtilsMessengerEXT,
-        PFN_vkCreateDebugUtilsMessengerEXT,
+        PFN_vkCreateDebugUtilsMessengerEXT, SurfaceKHR,
     },
     Entry, Instance,
 };
 use log::{error, info, trace, warn};
+use winit::window::Window;
 
 unsafe extern "system" fn debug_callback(
     severity: DebugUtilsMessageSeverityFlagsEXT,
@@ -56,10 +58,12 @@ pub struct Renderer {
     entry: Entry,
     instance: Instance,
     debug_utils_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    surface: SurfaceKHR,
+    surface_fn: Surface,
 }
 
 impl Renderer {
-    pub fn new() -> Self {
+    pub fn new(window: &Window) -> Self {
         info!("Started creating renderer.");
 
         let entry = Entry::linked();
@@ -109,7 +113,10 @@ impl Renderer {
         }
 
         // EXTENSIONS
+        info!("Getting needed extensions");
         let mut required_extensions = Vec::new();
+        required_extensions.extend(ash_window::enumerate_required_extensions(window).unwrap());
+        info!("Requested required surface extensions");
         if cfg!(debug_assertions) {
             info!("Requested Extension: Debug Utils");
             required_extensions.push(vkstr::VK_EXT_DEBUG_UTILS.as_ptr());
@@ -138,10 +145,17 @@ impl Renderer {
                 Some(Renderer::setup_debug_messenger(&entry, instance.handle()));
         }
 
+        let surface =
+            unsafe { ash_window::create_surface(&entry, &instance, &window, None).unwrap() };
+        let surface_fn = ash::extensions::khr::Surface::new(&entry, &instance);
+        info!("Aquired surface");
+
         Self {
             entry,
             instance,
             debug_utils_messenger,
+            surface,
+            surface_fn,
         }
     }
 
@@ -213,6 +227,8 @@ impl Drop for Renderer {
                     );
                 }
             }
+            info!("Destroying surface");
+            self.surface_fn.destroy_surface(self.surface, None);
             info!("Destroying instance");
             self.instance.destroy_instance(None);
         }

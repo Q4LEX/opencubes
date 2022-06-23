@@ -2,7 +2,8 @@ use renderer::Renderer;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder, platform::run_return::EventLoopExtRunReturn,
+    platform::run_return::EventLoopExtRunReturn,
+    window::WindowBuilder,
 };
 
 #[macro_use]
@@ -15,7 +16,7 @@ fn main() {
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let _render = Renderer::new();
+    let _render = Renderer::new(&window);
 
     event_loop.run_return(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
