@@ -1,13 +1,19 @@
 use ash::{
     extensions::khr::Surface,
-    vk::{ExtensionProperties, PhysicalDevice, PhysicalDeviceType, Queue, QueueFlags, SurfaceKHR},
-    Entry, Instance,
+    vk::{
+        ComponentMapping, ComponentMappingBuilder, ComponentSwizzle, ExtensionProperties, Extent2D,
+        ImageAspectFlags, ImageSubresourceRange, ImageView, ImageViewCreateInfo, ImageViewType,
+        PhysicalDevice, PhysicalDeviceType, PresentModeKHR, Queue, QueueFlags, ShaderModule,
+        ShaderModuleCreateInfo, SurfaceCapabilitiesKHR, SurfaceFormatKHR, SurfaceKHR,
+    },
+    Device, Entry, Instance,
 };
 use log::warn;
 use std::{
     collections::HashSet,
     ffi::{CStr, CString},
 };
+use winit::window::Window;
 
 pub fn api_version_tuple(x: u32) -> (u32, u32, u32, u32) {
     (
@@ -143,6 +149,12 @@ pub unsafe fn pick_most_suitable_physical_device(
             }
         }
 
+        let swap_chain_details =
+            SwapChainSupportDetails::query_from(instance, physical_device, surface_loader, surface);
+        if swap_chain_details.formats.is_empty() || swap_chain_details.present_modes.is_empty() {
+            continue 'outer;
+        }
+
         // 2. RATE DEVICE BY EXTENSIONS
         for (index, extension) in optional_extensions.iter().enumerate() {
             let mut is_available = false;
@@ -256,4 +268,126 @@ pub fn find_queue_families(
         graphics_family,
         present_family,
     }
+}
+
+pub struct SwapChainSupportDetails {
+    pub capabilities: SurfaceCapabilitiesKHR,
+    pub formats: Vec<SurfaceFormatKHR>,
+    pub present_modes: Vec<PresentModeKHR>,
+}
+
+impl SwapChainSupportDetails {
+    pub fn query_from(
+        instance: &Instance,
+        device: &PhysicalDevice,
+        surface_loader: &Surface,
+        surface: &SurfaceKHR,
+    ) -> Self {
+        unsafe {
+            let capabilities = surface_loader
+                .get_physical_device_surface_capabilities(*device, *surface)
+                .unwrap();
+            let formats = surface_loader
+                .get_physical_device_surface_formats(*device, *surface)
+                .unwrap();
+            let present_modes = surface_loader
+                .get_physical_device_surface_present_modes(*device, *surface)
+                .unwrap();
+
+            Self {
+                capabilities,
+                formats,
+                present_modes,
+            }
+        }
+    }
+
+    pub fn choose_format(&self) -> SurfaceFormatKHR {
+        for format in &self.formats {
+            if format.format == ash::vk::Format::B8G8R8A8_SRGB
+                && format.color_space == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR
+            {
+                return format.clone();
+            }
+        }
+        self.formats[0].clone()
+    }
+
+    pub fn choose_presentation_mode(&self) -> PresentModeKHR {
+        for present_mode in &self.present_modes {
+            if *present_mode == PresentModeKHR::MAILBOX {
+                return present_mode.clone();
+            }
+        }
+        return PresentModeKHR::FIFO;
+    }
+
+    pub fn choose_swap_extend(&self, window: &Window) -> Extent2D {
+        if self.capabilities.current_extent.width != u32::MAX {
+            return self.capabilities.current_extent;
+        }
+        let size = window.inner_size();
+        let mut result = Extent2D {
+            width: size.width,
+            height: size.height,
+        };
+        result.width = result.width.clamp(
+            self.capabilities.min_image_extent.width,
+            self.capabilities.max_image_extent.width,
+        );
+        result.height = result.height.clamp(
+            self.capabilities.min_image_extent.height,
+            self.capabilities.max_image_extent.height,
+        );
+        result
+    }
+
+    pub fn choose_image_count(&self) -> u32 {
+        let image_count = self.capabilities.min_image_count + 1;
+        if self.capabilities.max_image_count > 0 && self.capabilities.max_image_count > image_count
+        {
+            return self.capabilities.max_image_count;
+        }
+        image_count
+    }
+}
+
+pub fn create_image_views(
+    device: &Device,
+    images: &Vec<ash::vk::Image>,
+    format: ash::vk::Format,
+) -> Vec<ImageView> {
+    let mut result = Vec::new();
+    for image in images {
+        let components = ComponentMapping::builder()
+            .r(ComponentSwizzle::IDENTITY)
+            .g(ComponentSwizzle::IDENTITY)
+            .b(ComponentSwizzle::IDENTITY)
+            .a(ComponentSwizzle::IDENTITY);
+
+        let subresource_range = ImageSubresourceRange::builder()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let create_info = ImageViewCreateInfo::builder()
+            .image(*image)
+            .view_type(ImageViewType::TYPE_2D)
+            .format(format)
+            .components(*components)
+            .subresource_range(*subresource_range);
+
+        result.push(unsafe { device.create_image_view(&create_info, None).unwrap() })
+    }
+    result
+}
+
+pub fn create_shader_module(device: &Device, bytes: &[u8]) -> ShaderModule {
+    let mut create_info = ShaderModuleCreateInfo::builder();
+    create_info.code_size = bytes.len();
+    create_info.p_code = bytes.as_ptr() as *const u32;
+
+    unsafe { device.create_shader_module(&create_info, None).unwrap() }
 }
