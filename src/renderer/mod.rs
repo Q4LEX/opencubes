@@ -142,9 +142,13 @@ impl Renderer {
 
         let graphics_queue =
             unsafe { device.get_device_queue(queue_family_indices.graphics_family.unwrap(), 0) };
-        let present_queue = unsafe { device.get_device_queue(queue_family_indices.present_family.unwrap(), 0) };
+        let present_queue =
+            unsafe { device.get_device_queue(queue_family_indices.present_family.unwrap(), 0) };
 
-        let queues = Queues { graphics_queue, present_queue };
+        let queues = Queues {
+            graphics_queue,
+            present_queue,
+        };
 
         Renderer {
             entry,
@@ -236,16 +240,19 @@ impl Renderer {
     ) -> Device {
         let queue_family_indices =
             utils::find_queue_families(instance, physical_device, &surface_loader, &surface);
-
-        let mut family_queue_create_info = DeviceQueueCreateInfo::builder()
-            .queue_family_index(queue_family_indices.graphics_family.unwrap())
-            .queue_priorities(&[1.0]);
-        family_queue_create_info.queue_count = 1;
+        let unique_indices = queue_family_indices.get_unique_indices();
+        let mut create_infos = Vec::new();
+        for unique in unique_indices {
+            let mut create_info = DeviceQueueCreateInfo::builder()
+                .queue_family_index(unique)
+                .queue_priorities(&[1.0]);
+            create_info.queue_count = 1;
+            create_infos.push(*create_info);
+        }
 
         let slice = cstring_slice_to_raw(extensions);
-        let infos = [*family_queue_create_info];
         let device_create_info = DeviceCreateInfo::builder()
-            .queue_create_infos(&infos)
+            .queue_create_infos(&create_infos)
             .enabled_extension_names(&slice);
 
         instance

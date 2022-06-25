@@ -4,7 +4,10 @@ use ash::{
     Entry, Instance,
 };
 use log::warn;
-use std::ffi::{CStr, CString};
+use std::{
+    collections::HashSet,
+    ffi::{CStr, CString},
+};
 
 pub fn api_version_tuple(x: u32) -> (u32, u32, u32, u32) {
     (
@@ -206,6 +209,18 @@ pub struct QueueFamilyIndices {
 impl QueueFamilyIndices {
     pub fn has_required(&self) -> bool {
         self.graphics_family.is_some() && self.present_family.is_some()
+    }
+
+    pub fn get_unique_indices(&self) -> HashSet<u32> {
+        let mut result = HashSet::new();
+        if self.graphics_family.is_some() {
+            result.insert(self.graphics_family.unwrap());
+        }
+        if self.present_family.is_some() {
+            result.insert(self.present_family.unwrap());
+        }
+
+        result
     }
 }
 
