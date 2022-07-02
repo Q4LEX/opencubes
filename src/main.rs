@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+
 use renderer::Renderer;
 use winit::{
     event::{Event, WindowEvent},
@@ -16,7 +19,7 @@ fn main() {
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let _render = Renderer::new(&window);
+    let mut renderer = Renderer::new(&window);
 
     event_loop.run_return(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -26,6 +29,15 @@ fn main() {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+            Event::RedrawRequested(window_id) if window_id == window.id() => {
+                renderer.draw_frame();
+            }
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            }
+            Event::LoopDestroyed => {
+                renderer.shutdown();
+            }
             _ => (),
         }
     });

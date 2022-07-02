@@ -1,16 +1,15 @@
 use std::ffi::{c_void, CStr};
 
 use ash::{
+    extensions::ext::DebugUtils,
     vk::{
         self, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT,
         DebugUtilsMessengerCreateInfoEXTBuilder, DebugUtilsMessengerEXT,
     },
-    Entry,
+    Entry, Instance,
 };
 use log::{error, info, trace, warn};
-
-use super::fp;
 
 unsafe extern "system" fn debug_callback(
     severity: DebugUtilsMessageSeverityFlagsEXT,
@@ -47,41 +46,49 @@ unsafe extern "system" fn debug_callback(
     vk::FALSE
 }
 
-pub fn get_debug_messenger_create_info() -> DebugUtilsMessengerCreateInfoEXTBuilder<'static> {
-    DebugUtilsMessengerCreateInfoEXT::builder()
-        .message_severity(
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
-        )
-        .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
-        )
-        .pfn_user_callback(Some(debug_callback))
+pub struct DebugMessenger {
+    pub loader: DebugUtils,
+    pub messenger: DebugUtilsMessengerEXT,
 }
 
-pub fn setup_debug_messenger(
-    entry: &Entry,
-    instance: &ash::vk::Instance,
-) -> DebugUtilsMessengerEXT {
-    unsafe {
-        let create_info = get_debug_messenger_create_info().build();
-        let debug_create_fp = fp::get_create_debug_utils_messenger_fp(entry, instance);
-        let mut debug_utils_messenger: DebugUtilsMessengerEXT = std::mem::zeroed();
-        if debug_create_fp(
-            *instance,
-            &create_info,
-            std::ptr::null(),
-            &mut debug_utils_messenger,
-        )
-        .result()
-        .is_err()
-        {
-            panic!("Failed to set up debug messenger!");
+impl DebugMessenger {
+    pub fn new(entry: &Entry, instance: &Instance) -> Self {
+        let loader = DebugUtils::new(entry, instance);
+        let create_info = DebugMessenger::get_create_info();
+        let messenger = unsafe {
+            loader
+                .create_debug_utils_messenger(&create_info, None)
+                .unwrap()
         };
-        debug_utils_messenger
+
+        Self {
+            loader: DebugUtils::new(entry, instance),
+            messenger,
+        }
+    }
+
+    pub fn get_create_info() -> DebugUtilsMessengerCreateInfoEXTBuilder<'static> {
+        DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+            )
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+            )
+            .pfn_user_callback(Some(debug_callback))
+    }
+}
+
+impl Drop for DebugMessenger {
+    fn drop(&mut self) {
+        unsafe {
+            self.loader
+                .destroy_debug_utils_messenger(self.messenger, None);
+        }
     }
 }
